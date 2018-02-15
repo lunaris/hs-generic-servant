@@ -1,0 +1,12 @@
+resolver: nightly-2017-09-29
+nix:
+  enable: true
+  shell-file: shell.nix
+flags: {}
+packages:
+  - '.'
+
+extra-deps:
+  - 'generic-lens-0.5.1.0'
+
+extra-package-dbs: []

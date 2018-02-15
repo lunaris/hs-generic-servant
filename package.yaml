@@ -1,0 +1,64 @@
+name: generic-servant
+version: '0.1.0.0'
+synopsis: Generic Servant things
+description: Generic Servant things
+
+default-extensions:
+  - BangPatterns
+  - ConstraintKinds
+  - DataKinds
+  - DeriveAnyClass
+  - DeriveDataTypeable
+  - DeriveFunctor
+  - DeriveFoldable
+  - DeriveGeneric
+  - DeriveTraversable
+  - DerivingStrategies
+  - FlexibleContexts
+  - FlexibleInstances
+  - FunctionalDependencies
+  - GADTs
+  - GeneralizedNewtypeDeriving
+  - InstanceSigs
+  - KindSignatures
+  - LambdaCase
+  - MagicHash
+  - MultiParamTypeClasses
+  - NamedFieldPuns
+  - OverloadedStrings
+  - PatternSynonyms
+  - PolyKinds
+  - QuasiQuotes
+  - RankNTypes
+  - RecordWildCards
+  - ScopedTypeVariables
+  - StandaloneDeriving
+  - TupleSections
+  - TypeApplications
+  - TypeFamilies
+  - TypeOperators
+
+ghc-options:
+  - -Wall
+  - -Werror
+
+dependencies:
+  - aeson
+  - base
+  - containers
+  - generic-lens
+  - lens
+  - mtl
+  - servant
+  - servant-server
+  - template-haskell
+  - text
+  - transformers
+  - vinyl
+  - wai
+  - warp
+
+library:
+  source-dirs: src
+  exposed-modules:
+    - GS
