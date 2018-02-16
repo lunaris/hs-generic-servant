@@ -41,11 +41,13 @@ newtype Op1Result
 
 data Op1Error1
   = Op1Error1
-  deriving (Eq, Generic, Ord, Show)
+  deriving stock    (Eq, Generic, Ord, Show)
+  deriving anyclass (Ae.ToJSON)
 
 data Op1Error2
   = Op1Error2
-  deriving (Eq, Generic, Ord, Show)
+  deriving stock    (Eq, Generic, Ord, Show)
+  deriving anyclass (Ae.ToJSON)
 
 data Op2Result
   = Op2Result
@@ -58,7 +60,8 @@ data Op2Result
 
 data Op2Error1
   = Op2Error1
-  deriving (Eq, Generic, Ord, Show)
+  deriving stock    (Eq, Generic, Ord, Show)
+  deriving anyclass (Ae.ToJSON)
 
 class Monad m => MonadService m where
   op1
@@ -196,11 +199,14 @@ instance HandledErrors '[] where
   errorHandlersFor'
     = Vl.RNil
 
-instance (ErrorStatusCode sts, HandledErrors es)
+instance (Ae.ToJSON e, ErrorStatusCode sts, HandledErrors es)
       =>  HandledErrors ( '(e, sts) ': es) where
 
   errorHandlersFor'
-    = (Vl.Co.H $ \_e -> throwError $ statusCodeError @sts) Vl.:& errorHandlersFor' @es
+    =     (Vl.Co.H $ \e -> throwError $
+            (statusCodeError @sts) { errBody = Ae.encode e })
+
+    Vl.:& errorHandlersFor' @es
 
 class KnownNat sts => ErrorStatusCode sts where
   statusCodeError :: ServantErr
@@ -219,16 +225,9 @@ type family Fsts (xs :: [(a, b)]) :: [a] where
 
 server :: Server API
 server
-  =    ( \(ErrorHandlersFor handleErrors) -> do
-            result <- runExceptT $
-              op1Impl prSessId prAccId (Resource $ AccountId "e2")
-
-            case result of
-              Left es ->
-                handleErrors es
-
-              Right op1Result ->
-                pure op1Result
+  =    ( \(ErrorHandlersFor handleErrors) ->
+            runExceptT (op1Impl prSessId prAccId (Resource $ AccountId "e2"))
+              >>= either handleErrors pure
 
        )
 
