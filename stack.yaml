@@ -8,5 +8,6 @@ packages:
 
 extra-deps:
   - 'generic-lens-0.5.1.0'
+  - 'vinyl-0.7.0'
 
 extra-package-dbs: []

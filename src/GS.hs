@@ -3,18 +3,20 @@
 
 module GS where
 
-import qualified Control.Lens             as Lens
+import qualified Control.Lens                               as Lens
 import           Control.Monad.Except
-import qualified Data.Aeson               as Ae
-import qualified Data.Generics.Sum        as G.S
+import qualified Data.Aeson                                 as Ae
+import qualified Data.Generics.Sum                          as G.S
 import           Data.Proxy
-import qualified Data.Vinyl               as Vl
-import qualified Data.Vinyl.CoRec         as Vl.Co
-import qualified Data.Vinyl.Functor       as Vl.F
+import qualified Data.Vinyl                                 as Vl
+import qualified Data.Vinyl.CoRec                           as Vl.Co
+import qualified Data.Vinyl.Functor                         as Vl.F
 import           GHC.Generics
-import qualified Network.Wai              as Wai
-import qualified Network.Wai.Handler.Warp as Warp
+import           GHC.TypeLits
+import qualified Network.Wai                                as Wai
+import qualified Network.Wai.Handler.Warp                   as Warp
 import           Servant
+import           Servant.Server.Internal.RoutingApplication
 
 newtype Principal a
   = Principal { getPrincipal :: a }
@@ -147,44 +149,94 @@ instance {-# OVERLAPPING #-}
     = Vl.Co.asA (Proxy @e) . _anErrorCoRec
 
 type API
-  = APIAround MonadService
-      (    Invoke "op1" ("op1" :> Get '[JSON] Op1Result)
-      :<|> Invoke "op2" ("op2" :> Get '[JSON] Op2Result)
-      )
+  =       "op1"
+       :> Errors
+           '[ Op1Error1 `AsStatus` 409
+            , Op1Error2 `AsStatus` 418
+            ]
 
-data APIAround c api
+       :> Get '[JSON] Op1Result
 
-instance HasServer api ctx => HasServer (APIAround c api) ctx where
-  type ServerT (APIAround c api) m
-    = ServerT api m
+  :<|>    "op2"
+       :> Get '[JSON] Op2Result
 
-  route _
-    = route (Proxy @api)
+data Errors es
 
-data Invoke f api
+instance (HandledErrors es, HasServer api ctx)
+      =>  HasServer ((:>) (Errors es) api) ctx where
 
-instance HasServer api ctx => HasServer (Invoke f api) ctx where
-  type ServerT (Invoke f api) m
-    = ServerT api m
+  type ServerT ((:>) (Errors es) api) m
+    = ErrorHandlersFor es m -> ServerT api m
 
-  route _
-    = route (Proxy @api)
+  route Proxy context subserver
+    = route (Proxy @api) context
+        (passToServer subserver (const (errorHandlersFor @es)))
 
-class GServer api where
-  gserver :: Server api
+type AsStatus e sts
+  = '(e, sts)
 
-instance (GServer a, GServer b) => GServer (a :<|> b) where
-  gserver
-    = gserver @a :<|> gserver @b
+newtype ErrorHandlersFor es m
+  = ErrorHandlersFor (forall a. AnError (Fsts es) -> m a)
 
-server' :: Server API
-server'
-  = gserver @API
+errorHandlersFor
+  :: forall es m.
+     (HandledErrors es, MonadError ServantErr m)
+  => ErrorHandlersFor es m
+
+errorHandlersFor
+  = ErrorHandlersFor $ \(AnError x) ->
+      Vl.Co.match @(Fsts es) x (errorHandlersFor' @es)
+
+class HandledErrors (es :: [(*, Nat)]) where
+  errorHandlersFor'
+    :: MonadError ServantErr m
+    => Vl.Co.Handlers (Fsts es) (m a)
+
+instance HandledErrors '[] where
+  errorHandlersFor'
+    = Vl.RNil
+
+instance (ErrorStatusCode sts, HandledErrors es)
+      =>  HandledErrors ( '(e, sts) ': es) where
+
+  errorHandlersFor'
+    = (Vl.Co.H $ \_e -> throwError $ statusCodeError @sts) Vl.:& errorHandlersFor' @es
+
+class KnownNat sts => ErrorStatusCode sts where
+  statusCodeError :: ServantErr
+
+instance ErrorStatusCode 409 where
+  statusCodeError
+    = err409
+
+instance ErrorStatusCode 418 where
+  statusCodeError
+    = err418
+
+type family Fsts (xs :: [(a, b)]) :: [a] where
+  Fsts '[]              = '[]
+  Fsts ( '(a, b) ': xs) = a ': Fsts xs
 
 server :: Server API
 server
-  =    pure (Op1Result "op1")
+  =    ( \(ErrorHandlersFor handleErrors) -> do
+            result <- runExceptT $
+              op1Impl prSessId prAccId (Resource $ AccountId "e2")
+
+            case result of
+              Left es ->
+                handleErrors es
+
+              Right op1Result ->
+                pure op1Result
+
+       )
+
   :<|> pure (Op2Result "op2" 42)
+
+  where
+    prSessId = Principal $ SessionId "prSessId"
+    prAccId  = Principal $ AccountId "prAccId"
 
 app :: Wai.Application
 app
